@@ -1,0 +1,55 @@
+flowchart TB
+    subgraph "DHT Layer"
+        DHT[Distributed Hash Table]
+        IPFS[IPFS Content Storage]
+    end
+
+    subgraph "NATS Federation"
+        NATS1[NATS Garrison Node 1]
+        NATS2[NATS Garrison Node 2]
+        NATS3[NATS Garrison Node 3]
+        NATS1 <--> NATS2
+        NATS2 <--> NATS3
+        NATS3 <--> NATS1
+    end
+
+    subgraph "Trust Layers"
+        RootCA[Root Certificate Authorities]
+        IntermediateCA[Intermediate CAs]
+        NodeCerts[Node Certificates]
+    end
+
+    Client1[Client Node 1]
+    Client2[Client Node 2]
+    Client3[Client Node 3]
+
+    RootCA --> IntermediateCA
+    IntermediateCA --> NodeCerts
+    
+    RootCA -.-> NATS1
+    RootCA -.-> NATS2
+    RootCA -.-> NATS3
+    
+    IntermediateCA -.-> DHT
+    NodeCerts -.-> IPFS
+    
+    Client1 --> DHT
+    Client2 --> DHT
+    Client3 --> DHT
+    
+    Client1 -.-> NATS1
+    Client2 -.-> NATS2
+    Client3 -.-> NATS3
+    
+    NATS1 -.-> IPFS
+    DHT <-.-> IPFS
+    
+    classDef federation fill:#f96,stroke:#333,stroke-width:2px;
+    classDef dht fill:#9cf,stroke:#333,stroke-width:2px;
+    classDef trust fill:#c9f,stroke:#333,stroke-width:2px;
+    classDef client fill:#cfc,stroke:#333,stroke-width:2px;
+    
+    class NATS1,NATS2,NATS3 federation;
+    class DHT,IPFS dht;
+    class RootCA,IntermediateCA,NodeCerts trust;
+    class Client1,Client2,Client3 client;

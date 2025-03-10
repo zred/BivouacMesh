@@ -1,0 +1,43 @@
+flowchart TD
+    subgraph "Consensus-Based Trust Promotion"
+        ConsensusA[Consensus Group A]
+        ConsensusB[Consensus Group B]
+        
+        ConsensusA -->|Votes to promote| NodeX
+        ConsensusB -->|Votes to promote| NodeY
+    end
+    
+    subgraph "Capability Hierarchy"
+        RootAnchor[Root Trust Anchor]
+        CA[Certificate Authority]
+        Federation[Federation Node]
+        Gateway[Gateway Node]
+        Storage[Storage Node]
+        Relay[Relay Node]
+        Validator[Validator Node]
+        
+        RootAnchor --> CA
+        RootAnchor --> Federation
+        CA --> Gateway
+        CA --> Storage
+        Federation --> Relay
+        Federation --> Validator
+    end
+    
+    subgraph "Dynamic Capability Transfer"
+        NodeX -->|Granted CA Capability| NodeP
+        NodeY -->|Granted Federation Capability| NodeQ
+        NodeP -->|Can now grant| Gateway
+        NodeQ -->|Can now grant| Relay
+    end
+    
+    NodeX -.->|Becomes| CA
+    NodeY -.->|Becomes| Federation
+    
+    classDef consensus fill:#f96,stroke:#333,stroke-width:2px;
+    classDef capability fill:#9cf,stroke:#333,stroke-width:2px;
+    classDef transfer fill:#cfc,stroke:#333,stroke-width:2px;
+    
+    class ConsensusA,ConsensusB consensus;
+    class RootAnchor,CA,Federation,Gateway,Storage,Relay,Validator capability;
+    class NodeX,NodeY,NodeP,NodeQ,Gateway,Relay transfer;
