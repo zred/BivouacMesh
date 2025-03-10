@@ -1,0 +1,9 @@
+flowchart TD
+    A[Revocation Proposal] --> B{Consensus Voting}
+    B -->|Threshold Met| C[Create Revocation Record]
+    C --> D[Publish to DHT]
+    C --> E[Publish to NATS/Federation]
+    D --> F[Grace Period]
+    E --> F
+    F --> G[Enforcement]
+    B -->|Threshold Not Met| H[Reject Revocation]
