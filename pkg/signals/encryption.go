@@ -1,6 +1,7 @@
 package signals
 
 import (
+	"crypto/cipher"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -16,8 +17,8 @@ type SecureChannel struct {
 	localPublicKey   [32]byte
 	remotePublicKey  [32]byte
 	sharedSecret     [32]byte
-	encryptionCipher *chacha20poly1305.AEAD
-	decryptionCipher *chacha20poly1305.AEAD
+	encryptionCipher cipher.AEAD
+	decryptionCipher cipher.AEAD
 }
 
 // NewSecureChannel creates a new secure channel using X25519 key exchange

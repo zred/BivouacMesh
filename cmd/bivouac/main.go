@@ -11,11 +11,11 @@ import (
 	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
-	"github.com/yourusername/bivouac-mesh/pkg/garrison"
-	"github.com/yourusername/bivouac-mesh/pkg/outpost"
-	"github.com/yourusername/bivouac-mesh/pkg/perimeter"
-	"github.com/yourusername/bivouac-mesh/pkg/signals"
-	"github.com/yourusername/bivouac-mesh/pkg/scouts"
+	"github.com/zred/BivouacMesh/pkg/garrison"
+	"github.com/zred/BivouacMesh/pkg/outpost"
+	"github.com/zred/BivouacMesh/pkg/perimeter"
+	"github.com/zred/BivouacMesh/pkg/signals"
+	"github.com/zred/BivouacMesh/pkg/scouts"
 )
 
 func main() {

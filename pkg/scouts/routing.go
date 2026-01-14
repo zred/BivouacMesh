@@ -19,10 +19,10 @@ type MessageFilter struct {
 // NewMessageFilter creates a new message filter with the given capacity and false positive rate
 func NewMessageFilter(capacity uint, falsePositiveRate float64) *MessageFilter {
 	// Calculate optimal filter parameters
-	filterSize := bloom.EstimateParameters(capacity, falsePositiveRate)
-	
+	m, k := bloom.EstimateParameters(capacity, falsePositiveRate)
+
 	return &MessageFilter{
-		filter:    bloom.New(filterSize.N, filterSize.K),
+		filter:    bloom.New(m, k),
 		capacity:  capacity,
 		seenCount: 0,
 	}

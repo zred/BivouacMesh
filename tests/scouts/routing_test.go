@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/yourusername/bivouac-mesh/pkg/scouts"
+	"github.com/zred/BivouacMesh/pkg/scouts"
 )
 
 // Test Bloom filter-based message deduplication

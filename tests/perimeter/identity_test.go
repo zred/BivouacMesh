@@ -3,7 +3,7 @@ package perimeter_test
 import (
 	"testing"
 
-	"github.com/yourusername/bivouac-mesh/pkg/perimeter"
+	"github.com/zred/BivouacMesh/pkg/perimeter"
 )
 
 // Test key generation functionality
