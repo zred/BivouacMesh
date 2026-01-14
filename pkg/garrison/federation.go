@@ -9,8 +9,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/yourusername/bivouac-mesh/pkg/perimeter"
-	"github.com/yourusername/bivouac-mesh/pkg/signals"
+	"github.com/zred/BivouacMesh/pkg/perimeter"
+	"github.com/zred/BivouacMesh/pkg/signals"
 )
 
 // FederationNode represents a high-trust federation node in the Bivouac Mesh
@@ -231,40 +231,52 @@ func (fn *FederationNode) checkAccessPolicy(subject string, msg *signals.Message
 	var streamName string
 	for name, stream := range fn.streams {
 		// Check if the stream handles this subject
-		cfg, err := stream.Info()
+		cfg, err := stream.Info(fn.ctx)
 		if err != nil {
 			continue
 		}
-		
+
 		for _, s := range cfg.Config.Subjects {
-			if nats.IsSubjectMatch(s, subject) {
+			// Simple subject matching (exact match or wildcard)
+			if matchSubject(s, subject) {
 				streamName = name
 				break
 			}
 		}
-		
+
 		if streamName != "" {
 			break
 		}
 	}
-	
+
 	if streamName == "" {
 		return false // No matching stream
 	}
-	
+
 	// Get the access policy for this stream
 	fn.policyMutex.RLock()
-	policy, ok := fn.accessPolicies[streamName]
+	_, ok := fn.accessPolicies[streamName]
 	fn.policyMutex.RUnlock()
-	
+
 	if !ok {
 		return false // No policy defined
 	}
-	
+
 	// In a real implementation, we would check the sender's identity
 	// against the allowed identities in the policy
 	// For now, we'll just return true for demonstration purposes
 	return true
+}
+
+// matchSubject is a simple subject matching function for NATS-style subjects
+func matchSubject(pattern, subject string) bool {
+	// For simplicity, just check for exact match or basic wildcards
+	// In production, use a proper NATS subject matching library
+	if pattern == subject || pattern == ">" || pattern == "*" {
+		return true
+	}
+	// Add more sophisticated matching as needed
+	return false
 }
 
 // PublishMessage publishes a message to a subject

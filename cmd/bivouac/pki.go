@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
-	"path/filepath"
 
-	"github.com/yourusername/bivouac-mesh/pkg/perimeter"
+	"github.com/nats-io/nats.go"
+	"github.com/zred/BivouacMesh/pkg/outpost"
+	"github.com/zred/BivouacMesh/pkg/perimeter"
 )
 
 // initPKI initializes the distributed PKI system
@@ -102,7 +104,7 @@ func verifyPeerIdentity(pki *perimeter.DistributedPKI, peerCert *x509.Certificat
 }
 
 // setupPKIHandlers sets up message handlers for PKI-related requests
-func setupPKIHandlers(nc *nats.Conn, pki *perimeter.DistributedPKI) error {
+func setupPKIHandlers(ctx context.Context, nc *nats.Conn, pki *perimeter.DistributedPKI) error {
 	if nc == nil {
 		return fmt.Errorf("NATS connection not available")
 	}
@@ -111,15 +113,15 @@ func setupPKIHandlers(nc *nats.Conn, pki *perimeter.DistributedPKI) error {
 	_, err := nc.Subscribe("pki.cert.request", func(msg *nats.Msg) {
 		// Parse the request (assuming it contains a subject name)
 		subjectName := string(msg.Data)
-		
+
 		// Fetch the certificate
-		cert, certPEM, err := pki.FetchCertificate(subjectName)
+		_, certPEM, err := pki.FetchCertificate(subjectName)
 		if err != nil {
 			// Reply with error
 			nc.Publish(msg.Reply, []byte("ERROR: "+err.Error()))
 			return
 		}
-		
+
 		// Reply with the certificate PEM
 		nc.Publish(msg.Reply, certPEM)
 	})
@@ -134,8 +136,8 @@ func setupPKIHandlers(nc *nats.Conn, pki *perimeter.DistributedPKI) error {
 		
 		// Try to get the CRL from the DHT
 		key := fmt.Sprintf("/pki/crl/%s", issuerName)
-		
-		cidBytes, err := pki.DHT.GetValue(pki.ctx, key)
+
+		cidBytes, err := pki.DHT.GetValue(ctx, key)
 		if err != nil {
 			// Reply with error
 			nc.Publish(msg.Reply, []byte("ERROR: "+err.Error()))

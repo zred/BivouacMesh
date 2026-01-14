@@ -12,8 +12,8 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	
-	"github.com/yourusername/bivouac-mesh/pkg/perimeter"
+
+	"github.com/zred/BivouacMesh/pkg/perimeter"
 )
 
 // ConsensusService manages the capability consensus process

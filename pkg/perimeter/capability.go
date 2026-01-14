@@ -202,9 +202,9 @@ func (cm *CapabilityManager) AddCapability(capability *Capability) error {
 	}
 	
 	// Verify all signatures
-	// In a real implementation, this would verify that each signer has 
+	// In a real implementation, this would verify that each signer has
 	// the required capability to grant this capability
-	for grantor, signature := range capability.Signatures {
+	for grantor, _ := range capability.Signatures {
 		// Verify the signature
 		// This would involve fetching the grantor's public key and verifying
 		// the signature against the capability data

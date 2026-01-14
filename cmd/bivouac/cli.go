@@ -6,10 +6,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/yourusername/bivouac-mesh/pkg/garrison"
-	"github.com/yourusername/bivouac-mesh/pkg/perimeter"
+	"github.com/zred/BivouacMesh/pkg/garrison"
+	"github.com/zred/BivouacMesh/pkg/perimeter"
 )
 
 // CLI represents the command-line interface

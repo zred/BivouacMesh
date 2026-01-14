@@ -10,10 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/peer"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs-api"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -609,7 +607,7 @@ func (dpki *DistributedPKI) VerifyCertificateChain(cert *x509.Certificate) error
 	issuerName := cert.Issuer.CommonName
 	
 	// Check if we have the issuer in our root store
-	issuer, ok := dpki.RootCAsByID[issuerName]
+	_, ok := dpki.RootCAsByID[issuerName]
 	if ok {
 		// In a real implementation, we'd properly verify the signature
 		return nil

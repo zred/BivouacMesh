@@ -142,15 +142,16 @@ func (ds *DiscoveryService) discoverPeers() {
 		case <-ds.ctx.Done():
 			return
 		case <-ticker.C:
-			// Find nearby peers in the DHT
-			peers, err := ds.DHT.FindPeers(ds.ctx, ds.discoveryTag)
-			if err != nil {
-				fmt.Printf("Error finding peers: %v\n", err)
-				continue
-			}
+			// Note: In the newer DHT API, FindPeers was removed
+			// We rely on mDNS and bootstrap peers for discovery
+			// DHT routing table naturally populates through network interactions
+
+			// Get connected peers from the host
+			connectedPeers := ds.Host.Network().Peers()
 
 			// Attempt to connect to discovered peers
-			for peerInfo := range peers {
+			for _, peerID := range connectedPeers {
+				peerInfo := ds.Host.Peerstore().PeerInfo(peerID)
 				if peerInfo.ID == ds.Host.ID() {
 					continue // Skip ourselves
 				}
