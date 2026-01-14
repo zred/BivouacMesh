@@ -65,7 +65,8 @@ type MerkleNode struct {
 
 // MerkleTree is a Merkle tree implementation for data integrity verification
 type MerkleTree struct {
-	Root *MerkleNode
+	Root      *MerkleNode
+	numLeaves int
 }
 
 // NewMerkleTree creates a new Merkle tree from the given data blocks
@@ -73,7 +74,7 @@ func NewMerkleTree(dataBlocks [][]byte) (*MerkleTree, error) {
 	if len(dataBlocks) == 0 {
 		return nil, errors.New("cannot create Merkle tree with no data")
 	}
-	
+
 	// Create leaf nodes
 	nodes := make([]*MerkleNode, len(dataBlocks))
 	for i, block := range dataBlocks {
@@ -84,12 +85,13 @@ func NewMerkleTree(dataBlocks [][]byte) (*MerkleTree, error) {
 			Data: block,
 		}
 	}
-	
+
 	// Build the tree bottom-up
 	root := buildMerkleTree(nodes)
-	
+
 	return &MerkleTree{
-		Root: root,
+		Root:      root,
+		numLeaves: len(dataBlocks),
 	}, nil
 }
 
@@ -170,46 +172,87 @@ func (mt *MerkleTree) GenerateProof(index int) ([][]byte, error) {
 	if mt.Root == nil {
 		return nil, errors.New("empty Merkle tree")
 	}
-	
-	// Collect proof as we traverse the tree
-	var proof [][]byte
-	
-	// Start at the root and traverse to the leaf
-	current := mt.Root
-	depth := 0
-	
-	// Calculate the number of leaf nodes
-	numLeaves := 1
-	for current.Left != nil {
-		numLeaves *= 2
-		current = current.Left
-	}
-	
-	if index < 0 || index >= numLeaves {
+
+	if index < 0 || index >= mt.numLeaves {
 		return nil, errors.New("index out of range")
 	}
-	
-	// Reset to root for traversal
-	current = mt.Root
-	path := index
-	
-	for current.Left != nil && current.Right != nil {
-		depth++
-		
-		// Determine direction based on the path
-		if path%2 == 0 {
-			// Go left, add right sibling to proof
-			proof = append(proof, current.Right.Hash)
-			current = current.Left
-		} else {
-			// Go right, add left sibling to proof
-			proof = append(proof, current.Left.Hash)
-			current = current.Right
-		}
-		
-		// Move to next level
-		path = path / 2
+
+	// Special case: single leaf tree has empty proof
+	if mt.numLeaves == 1 {
+		return [][]byte{}, nil
 	}
-	
+
+	// Collect siblings along the path from leaf to root
+	var proof [][]byte
+
+	// Build the leaf level first
+	leaves := mt.collectLeaves(mt.Root)
+
+	// Pad leaves to power of 2 if necessary (matching tree construction)
+	if len(leaves)%2 != 0 {
+		leaves = append(leaves, leaves[len(leaves)-1])
+	}
+
+	// Build path from leaf to root, collecting sibling hashes
+	currentLevel := leaves
+	currentIndex := index
+
+	for len(currentLevel) > 1 {
+		// Get sibling index
+		var siblingIndex int
+		if currentIndex%2 == 0 {
+			siblingIndex = currentIndex + 1
+		} else {
+			siblingIndex = currentIndex - 1
+		}
+
+		// Add sibling hash to proof
+		if siblingIndex < len(currentLevel) {
+			proof = append(proof, currentLevel[siblingIndex].Hash)
+		}
+
+		// Move to parent level
+		nextLevel := make([]*MerkleNode, 0, (len(currentLevel)+1)/2)
+		for i := 0; i < len(currentLevel); i += 2 {
+			left := currentLevel[i]
+			var right *MerkleNode
+			if i+1 < len(currentLevel) {
+				right = currentLevel[i+1]
+			} else {
+				right = left // Duplicate if odd
+			}
+
+			combined := append(left.Hash, right.Hash...)
+			hash := sha256.Sum256(combined)
+			nextLevel = append(nextLevel, &MerkleNode{Hash: hash[:]})
+		}
+
+		currentLevel = nextLevel
+		currentIndex = currentIndex / 2
+	}
+
 	return proof, nil
+}
+
+// collectLeaves collects all leaf nodes in left-to-right order
+func (mt *MerkleTree) collectLeaves(node *MerkleNode) []*MerkleNode {
+	if node == nil {
+		return nil
+	}
+
+	// Leaf node has data
+	if node.Data != nil {
+		return []*MerkleNode{node}
+	}
+
+	// Collect from left and right subtrees
+	var leaves []*MerkleNode
+	if node.Left != nil {
+		leaves = append(leaves, mt.collectLeaves(node.Left)...)
+	}
+	if node.Right != nil {
+		leaves = append(leaves, mt.collectLeaves(node.Right)...)
+	}
+
+	return leaves
 }

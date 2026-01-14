@@ -2,6 +2,7 @@ package scouts_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"testing"
 
@@ -132,7 +133,8 @@ func TestMerkleTreeVerification(t *testing.T) {
 	}
 	
 	// The root hash should match the hash of the single block
-	if !bytes.Equal(singleTree.GetRootHash(), merkleTree.Root.Hash) {
+	expectedHash := sha256.Sum256(singleBlock[0])
+	if !bytes.Equal(singleTree.GetRootHash(), expectedHash[:]) {
 		t.Error("Root hash of single-block tree should match the hash of the block")
 	}
 	
