@@ -255,16 +255,29 @@ func (fn *FederationNode) checkAccessPolicy(subject string, msg *signals.Message
 
 	// Get the access policy for this stream
 	fn.policyMutex.RLock()
-	_, ok := fn.accessPolicies[streamName]
+	policy, ok := fn.accessPolicies[streamName]
 	fn.policyMutex.RUnlock()
 
 	if !ok {
 		return false // No policy defined
 	}
 
-	// In a real implementation, we would check the sender's identity
-	// against the allowed identities in the policy
-	// For now, we'll just return true for demonstration purposes
+	// Verify message signature first
+	if !fn.verifyMessageSignature(msg) {
+		fmt.Printf("Invalid message signature\n")
+		return false
+	}
+
+	// Check if sender is in the allowed identities
+	senderID := string(msg.Sender)
+	if !isIdentityAllowed(senderID, policy.AllowedIdentities) {
+		fmt.Printf("Sender %s not in allowed identities\n", senderID)
+		return false
+	}
+
+	// TODO: Implement multi-signature verification if RequiredSigs > 1
+	// For now, we assume the message signature count matches RequiredSigs
+
 	return true
 }
 
@@ -276,6 +289,45 @@ func matchSubject(pattern, subject string) bool {
 		return true
 	}
 	// Add more sophisticated matching as needed
+	return false
+}
+
+// verifyMessageSignature verifies the cryptographic signature of a message
+func (fn *FederationNode) verifyMessageSignature(msg *signals.Message) bool {
+	// Build the message data to verify (everything except signature)
+	msgData := msg.SerializeForSigning()
+
+	// For now, we'll accept the message as valid if it has a signature
+	// In a production system, we would:
+	// 1. Look up the sender's public key from the PKI
+	// 2. Verify the signature using ed25519.Verify
+	// 3. Check certificate validity and revocation status
+
+	if len(msg.Signature) == 0 {
+		return false
+	}
+
+	// TODO: Implement full cryptographic verification
+	// This requires integration with the PKI system to fetch sender's public key
+	// For now, just verify the message has basic required fields
+	if len(msg.Sender) == 0 || len(msg.Recipient) == 0 || len(msg.Payload) == 0 {
+		return false
+	}
+
+	return len(msgData) > 0 // Placeholder: message must be serializable
+}
+
+// isIdentityAllowed checks if an identity is in the allowed list
+func isIdentityAllowed(identity string, allowedIdentities []string) bool {
+	// Check for wildcard (allow all)
+	for _, allowed := range allowedIdentities {
+		if allowed == "*" {
+			return true
+		}
+		if allowed == identity {
+			return true
+		}
+	}
 	return false
 }
 

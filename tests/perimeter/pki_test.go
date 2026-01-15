@@ -356,3 +356,192 @@ func TestNilSignature(t *testing.T) {
 		t.Error("Nil signature should not verify")
 	}
 }
+
+// TestCRLWithReason tests revoking certificates with reasons
+func TestCRLWithReason(t *testing.T) {
+	identity, err := perimeter.NewIdentity("crl-reason-test")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	crl := perimeter.NewCRL(identity)
+
+	// Revoke with reason
+	crl.RevokeCertificateWithReason("12345", 1) // Reason code 1
+
+	// Verify revocation
+	if !crl.IsRevoked("12345") {
+		t.Error("Certificate should be revoked")
+	}
+
+	// Get revocation info
+	info, exists := crl.GetRevocationInfo("12345")
+	if !exists {
+		t.Fatal("Revocation info should exist")
+	}
+
+	if info.Reason != 1 {
+		t.Errorf("Expected reason 1, got %d", info.Reason)
+	}
+}
+
+// TestCertificateRevocationCheck tests checking if x509 cert is revoked
+func TestCertificateRevocationCheck(t *testing.T) {
+	issuer, err := perimeter.NewIdentity("crl-issuer")
+	if err != nil {
+		t.Fatalf("Failed to create issuer: %v", err)
+	}
+
+	subject, err := perimeter.NewIdentity("subject")
+	if err != nil {
+		t.Fatalf("Failed to create subject: %v", err)
+	}
+
+	cert, _, err := issuer.CreateCertificateChain("subject", subject.PublicKey)
+	if err != nil {
+		t.Fatalf("Failed to create certificate: %v", err)
+	}
+
+	crl := perimeter.NewCRL(issuer)
+
+	// Certificate should not be revoked initially
+	if crl.IsCertificateRevoked(cert) {
+		t.Error("Certificate should not be revoked initially")
+	}
+
+	// Revoke the certificate
+	crl.RevokeCertificate(cert.SerialNumber.String())
+
+	// Now it should be revoked
+	if !crl.IsCertificateRevoked(cert) {
+		t.Error("Certificate should be revoked after revocation")
+	}
+}
+
+// TestCRLUpdate tests updating CRL timestamps
+func TestCRLUpdate(t *testing.T) {
+	identity, err := perimeter.NewIdentity("crl-update-test")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	crl := perimeter.NewCRL(identity)
+
+	originalNumber := crl.Number.String()
+	originalThisUpdate := crl.ThisUpdate
+
+	// Sleep briefly to ensure time difference
+	time.Sleep(10 * time.Millisecond)
+
+	// Update the CRL
+	crl.UpdateCRL()
+
+	// Number should be incremented
+	if crl.Number.String() == originalNumber {
+		t.Error("CRL number should be incremented after update")
+	}
+
+	// ThisUpdate should be newer
+	if !crl.ThisUpdate.After(originalThisUpdate) {
+		t.Error("ThisUpdate should be newer after update")
+	}
+
+	// NextUpdate should be in the future
+	if !crl.NextUpdate.After(crl.ThisUpdate) {
+		t.Error("NextUpdate should be after ThisUpdate")
+	}
+}
+
+// TestCRLExpiration tests CRL expiration checking
+func TestCRLExpiration(t *testing.T) {
+	identity, err := perimeter.NewIdentity("crl-expiry-test")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	crl := perimeter.NewCRL(identity)
+
+	// Fresh CRL should not be expired
+	if crl.IsExpired() {
+		t.Error("Fresh CRL should not be expired")
+	}
+
+	// Manually set NextUpdate to the past
+	crl.NextUpdate = time.Now().Add(-1 * time.Hour)
+
+	// Now it should be expired
+	if !crl.IsExpired() {
+		t.Error("CRL with past NextUpdate should be expired")
+	}
+}
+
+// TestSignedCRLVerification tests CRL signature verification
+func TestSignedCRLVerification(t *testing.T) {
+	identity, err := perimeter.NewIdentity("crl-sign-test")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	crl := perimeter.NewCRL(identity)
+
+	// Add some revocations
+	crl.RevokeCertificate("12345")
+	crl.RevokeCertificate("67890")
+
+	// Get signed CRL
+	signedCRL, err := crl.GetSignedCRL()
+	if err != nil {
+		t.Fatalf("Failed to get signed CRL: %v", err)
+	}
+
+	// Verify signature
+	err = perimeter.VerifySignedCRL(signedCRL, identity.PublicKey)
+	if err != nil {
+		t.Errorf("Failed to verify signed CRL: %v", err)
+	}
+
+	// Test with corrupted signature
+	if len(signedCRL) > 10 {
+		corruptedCRL := make([]byte, len(signedCRL))
+		copy(corruptedCRL, signedCRL)
+		corruptedCRL[len(corruptedCRL)-1] ^= 0xFF
+
+		err = perimeter.VerifySignedCRL(corruptedCRL, identity.PublicKey)
+		if err == nil {
+			t.Error("Corrupted CRL should fail verification")
+		}
+	}
+}
+
+// TestGetRevocationInfo tests retrieving revocation information
+func TestGetRevocationInfo(t *testing.T) {
+	identity, err := perimeter.NewIdentity("revocation-info-test")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	crl := perimeter.NewCRL(identity)
+
+	// Get info for non-existent entry
+	_, exists := crl.GetRevocationInfo("nonexistent")
+	if exists {
+		t.Error("Should not find info for non-existent certificate")
+	}
+
+	// Add revocation
+	crl.RevokeCertificateWithReason("12345", 3)
+
+	// Get info
+	info, exists := crl.GetRevocationInfo("12345")
+	if !exists {
+		t.Fatal("Should find revocation info")
+	}
+
+	if info.Reason != 3 {
+		t.Errorf("Expected reason 3, got %d", info.Reason)
+	}
+
+	if info.SerialNumber.String() != "12345" {
+		t.Errorf("Expected serial 12345, got %s", info.SerialNumber.String())
+	}
+}

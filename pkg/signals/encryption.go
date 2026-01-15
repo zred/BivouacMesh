@@ -133,18 +133,40 @@ func (m *Message) Validate() error {
 	if len(m.Sender) == 0 {
 		return errors.New("sender is required")
 	}
-	
+
 	if len(m.Payload) == 0 {
 		return errors.New("payload is required")
 	}
-	
+
 	if len(m.Signature) == 0 {
 		return errors.New("signature is required")
 	}
-	
+
 	if m.Timestamp <= 0 {
 		return errors.New("invalid timestamp")
 	}
-	
+
 	return nil
+}
+
+// SerializeForSigning creates a canonical byte representation for signing/verification
+// This excludes the Signature field to avoid circular dependency
+func (m *Message) SerializeForSigning() []byte {
+	// Build a consistent byte array from message fields (excluding signature)
+	// Format: Sender | Recipient | Type | Payload | Timestamp
+	result := make([]byte, 0, len(m.Sender)+len(m.Recipient)+1+len(m.Payload)+8)
+
+	result = append(result, m.Sender...)
+	result = append(result, m.Recipient...)
+	result = append(result, m.Type)
+	result = append(result, m.Payload...)
+
+	// Add timestamp as 8 bytes (int64)
+	timestamp := make([]byte, 8)
+	for i := 0; i < 8; i++ {
+		timestamp[i] = byte(m.Timestamp >> (56 - i*8))
+	}
+	result = append(result, timestamp...)
+
+	return result
 }

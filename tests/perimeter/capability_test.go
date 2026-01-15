@@ -2,6 +2,7 @@ package perimeter_test
 
 import (
 	"crypto/ed25519"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -286,5 +287,182 @@ func TestCapabilityStructure(t *testing.T) {
 	}
 	if cap.Metadata["region"] != "us-west" {
 		t.Error("Metadata not set correctly")
+	}
+}
+
+// TestVoteSignatureVerification tests that vote signatures are properly verified
+func TestVoteSignatureVerification(t *testing.T) {
+	voter, err := perimeter.NewIdentity("voter-node")
+	if err != nil {
+		t.Fatalf("Failed to create voter identity: %v", err)
+	}
+
+	target, err := perimeter.NewIdentity("target-node")
+	if err != nil {
+		t.Fatalf("Failed to create target identity: %v", err)
+	}
+
+	cm := perimeter.NewCapabilityManager(voter)
+
+	// Create a vote
+	vote := &perimeter.CapabilityVote{
+		VoterID:        voter.Cert.Subject.CommonName,
+		VoterKey:       voter.PublicKey,
+		VoterCapability: perimeter.CapabilityRootAnchor,
+		TargetNode:     target.Cert.Subject.CommonName,
+		TargetNodeKey:  target.PublicKey,
+		CapabilityType: perimeter.CapabilityCA,
+		Level:          1,
+		Timestamp:      time.Now(),
+		Expiration:     time.Now().Add(24 * time.Hour),
+		Metadata:       make(map[string]string),
+	}
+
+	// Sign the vote properly
+	voteData, err := json.Marshal(map[string]interface{}{
+		"voter":      vote.VoterID,
+		"target":     vote.TargetNode,
+		"capability": vote.CapabilityType,
+		"level":      vote.Level,
+		"timestamp":  vote.Timestamp.Unix(),
+		"expiration": vote.Expiration.Unix(),
+	})
+	if err != nil {
+		t.Fatalf("Failed to marshal vote data: %v", err)
+	}
+
+	vote.Signature, err = voter.Sign(voteData)
+	if err != nil {
+		t.Fatalf("Failed to sign vote: %v", err)
+	}
+
+	// Verify should fail because voter doesn't have required capability
+	err = cm.VerifyVote(vote)
+	if err == nil {
+		t.Error("VerifyVote should fail when voter doesn't have required capability")
+	}
+}
+
+// TestInvalidVoteSignature tests that invalid signatures are rejected
+func TestInvalidVoteSignature(t *testing.T) {
+	voter, err := perimeter.NewIdentity("voter-node")
+	if err != nil {
+		t.Fatalf("Failed to create voter identity: %v", err)
+	}
+
+	target, err := perimeter.NewIdentity("target-node")
+	if err != nil {
+		t.Fatalf("Failed to create target identity: %v", err)
+	}
+
+	cm := perimeter.NewCapabilityManager(voter)
+
+	vote := &perimeter.CapabilityVote{
+		VoterID:        voter.Cert.Subject.CommonName,
+		VoterKey:       voter.PublicKey,
+		TargetNode:     target.Cert.Subject.CommonName,
+		TargetNodeKey:  target.PublicKey,
+		CapabilityType: perimeter.CapabilityRelay,
+		Level:          1,
+		Timestamp:      time.Now(),
+		Expiration:     time.Now().Add(24 * time.Hour),
+		Signature:      []byte("invalid-signature"), // Invalid signature
+	}
+
+	// Should fail due to invalid signature
+	err = cm.VerifyVote(vote)
+	if err == nil {
+		t.Error("VerifyVote should reject invalid signature")
+	}
+	if err != nil && err.Error() != "invalid vote signature" {
+		t.Errorf("Expected 'invalid vote signature' error, got: %v", err)
+	}
+}
+
+// TestExpiredVote tests that expired votes are rejected
+func TestExpiredVote(t *testing.T) {
+	voter, err := perimeter.NewIdentity("voter-node")
+	if err != nil {
+		t.Fatalf("Failed to create voter identity: %v", err)
+	}
+
+	target, err := perimeter.NewIdentity("target-node")
+	if err != nil {
+		t.Fatalf("Failed to create target identity: %v", err)
+	}
+
+	cm := perimeter.NewCapabilityManager(voter)
+
+	vote := &perimeter.CapabilityVote{
+		VoterID:        voter.Cert.Subject.CommonName,
+		VoterKey:       voter.PublicKey,
+		TargetNode:     target.Cert.Subject.CommonName,
+		TargetNodeKey:  target.PublicKey,
+		CapabilityType: perimeter.CapabilityRelay,
+		Level:          1,
+		Timestamp:      time.Now().Add(-48 * time.Hour),
+		Expiration:     time.Now().Add(-24 * time.Hour), // Expired
+	}
+
+	// Create valid signature for the vote
+	voteData, _ := json.Marshal(map[string]interface{}{
+		"voter":      vote.VoterID,
+		"target":     vote.TargetNode,
+		"capability": vote.CapabilityType,
+		"level":      vote.Level,
+		"timestamp":  vote.Timestamp.Unix(),
+		"expiration": vote.Expiration.Unix(),
+	})
+	vote.Signature, _ = voter.Sign(voteData)
+
+	// Should fail due to expiration
+	err = cm.VerifyVote(vote)
+	if err == nil {
+		t.Error("VerifyVote should reject expired vote")
+	}
+	if err != nil && err.Error() != "vote has expired" {
+		t.Errorf("Expected 'vote has expired' error, got: %v", err)
+	}
+}
+
+// TestAddVoteWithVerification tests the AddVote method
+func TestAddVoteWithVerification(t *testing.T) {
+	voter, err := perimeter.NewIdentity("voter-node")
+	if err != nil {
+		t.Fatalf("Failed to create voter identity: %v", err)
+	}
+
+	target, err := perimeter.NewIdentity("target-node")
+	if err != nil {
+		t.Fatalf("Failed to create target identity: %v", err)
+	}
+
+	cm := perimeter.NewCapabilityManager(voter)
+
+	vote := &perimeter.CapabilityVote{
+		VoterID:        voter.Cert.Subject.CommonName,
+		VoterKey:       voter.PublicKey,
+		TargetNode:     target.Cert.Subject.CommonName,
+		TargetNodeKey:  target.PublicKey,
+		CapabilityType: perimeter.CapabilityRelay,
+		Level:          1,
+		Timestamp:      time.Now(),
+		Expiration:     time.Now().Add(24 * time.Hour),
+	}
+
+	voteData, _ := json.Marshal(map[string]interface{}{
+		"voter":      vote.VoterID,
+		"target":     vote.TargetNode,
+		"capability": vote.CapabilityType,
+		"level":      vote.Level,
+		"timestamp":  vote.Timestamp.Unix(),
+		"expiration": vote.Expiration.Unix(),
+	})
+	vote.Signature, _ = voter.Sign(voteData)
+
+	// Should fail because voter doesn't have required capability
+	err = cm.AddVote(vote)
+	if err == nil {
+		t.Error("AddVote should fail when voter lacks required capability")
 	}
 }

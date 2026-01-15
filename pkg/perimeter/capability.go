@@ -201,19 +201,51 @@ func (cm *CapabilityManager) AddCapability(capability *Capability) error {
 			len(capability.Signatures), req.RequiredVotes)
 	}
 	
+	// Serialize capability data for signature verification (without signatures)
+	capData, err := serializeCapabilityForSigning(capability)
+	if err != nil {
+		return fmt.Errorf("failed to serialize capability for verification: %w", err)
+	}
+
 	// Verify all signatures
-	// In a real implementation, this would verify that each signer has
-	// the required capability to grant this capability
-	for grantor, _ := range capability.Signatures {
-		// Verify the signature
-		// This would involve fetching the grantor's public key and verifying
-		// the signature against the capability data
-		
-		// Also verify that the grantor has the required capability to grant
+	validSignatures := 0
+	for grantor, signature := range capability.Signatures {
+		// Verify that the grantor has the required capability to grant
 		hasReq, level := cm.HasCapability(grantor, req.RequiredCapability)
 		if !hasReq || level < req.MinVoterCapability {
 			return fmt.Errorf("grantor %s does not have required capability", grantor)
 		}
+
+		// Get the grantor's capability to extract their public key
+		grantorCaps := cm.GetCapabilities(grantor)
+		if len(grantorCaps) == 0 {
+			return fmt.Errorf("grantor %s has no capabilities", grantor)
+		}
+
+		// Find a capability with a public key
+		var grantorKey ed25519.PublicKey
+		for _, cap := range grantorCaps {
+			if len(cap.SubjectKey) > 0 {
+				grantorKey = cap.SubjectKey
+				break
+			}
+		}
+
+		if len(grantorKey) == 0 {
+			return fmt.Errorf("grantor %s has no public key", grantor)
+		}
+
+		// Verify the signature
+		if !ed25519.Verify(grantorKey, capData, signature) {
+			return fmt.Errorf("invalid signature from grantor %s", grantor)
+		}
+
+		validSignatures++
+	}
+
+	if validSignatures < req.RequiredVotes {
+		return fmt.Errorf("insufficient valid signatures: got %d, need %d",
+			validSignatures, req.RequiredVotes)
 	}
 	
 	cm.mu.Lock()
@@ -377,23 +409,41 @@ func (cm *CapabilityManager) checkVotesForCapability(nodeID string, capType Capa
 		if vote.CapabilityType != capType {
 			continue
 		}
-		
+
 		// Check if the vote is expired
 		if now.After(vote.Expiration) {
 			continue
 		}
-		
+
 		// Check for duplicate voters (only count the latest vote from each voter)
 		if _, exists := voterMap[vote.VoterID]; exists {
 			continue
 		}
-		
+
 		// Verify the voter has the required capability
 		hasReq, level := cm.HasCapability(vote.VoterID, req.RequiredCapability)
 		if !hasReq || level < req.MinVoterCapability {
 			continue
 		}
-		
+
+		// Verify the vote signature
+		voteData, err := json.Marshal(map[string]interface{}{
+			"voter":      vote.VoterID,
+			"target":     vote.TargetNode,
+			"capability": vote.CapabilityType,
+			"level":      vote.Level,
+			"timestamp":  vote.Timestamp.Unix(),
+			"expiration": vote.Expiration.Unix(),
+		})
+		if err != nil {
+			continue // Skip votes we can't serialize
+		}
+
+		if !ed25519.Verify(vote.VoterKey, voteData, vote.Signature) {
+			// Invalid signature - skip this vote
+			continue
+		}
+
 		// This vote is valid
 		validVotes = append(validVotes, vote)
 		voterMap[vote.VoterID] = true
@@ -518,6 +568,30 @@ func (cm *CapabilityManager) GetVotes(nodeID string) []*CapabilityVote {
 	return votes
 }
 
+// serializeCapabilityForSigning creates a consistent byte representation for signing/verification
+// This excludes the Signatures field to avoid circular dependency
+func serializeCapabilityForSigning(capability *Capability) ([]byte, error) {
+	data := map[string]interface{}{
+		"type":       capability.Type,
+		"subject":    capability.Subject,
+		"subjectKey": capability.SubjectKey,
+		"level":      capability.Level,
+		"grantedBy":  capability.GrantedBy,
+		"issuedAt":   capability.IssuedAt.Unix(),
+		"expiresAt":  capability.ExpiresAt.Unix(),
+	}
+
+	// Include constraints and metadata if present
+	if len(capability.Constraints) > 0 {
+		data["constraints"] = capability.Constraints
+	}
+	if len(capability.Metadata) > 0 {
+		data["metadata"] = capability.Metadata
+	}
+
+	return json.Marshal(data)
+}
+
 // SerializeCapability converts a capability to JSON
 func SerializeCapability(capability *Capability) ([]byte, error) {
 	return json.Marshal(capability)
@@ -560,6 +634,109 @@ func (cm *CapabilityManager) RegisterCapabilityHandler(handler func(*Capability)
 func (cm *CapabilityManager) RegisterVoteHandler(handler func(*CapabilityVote)) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	
+
 	cm.voteHandlers = append(cm.voteHandlers, handler)
+}
+
+// VerifyVote verifies the signature and validity of a capability vote
+func (cm *CapabilityManager) VerifyVote(vote *CapabilityVote) error {
+	if vote == nil {
+		return errors.New("vote cannot be nil")
+	}
+
+	// Check if the vote is expired
+	if time.Now().After(vote.Expiration) {
+		return errors.New("vote has expired")
+	}
+
+	// Verify voter has a valid public key
+	if len(vote.VoterKey) == 0 {
+		return errors.New("vote has no voter public key")
+	}
+
+	// Serialize vote data for signature verification
+	voteData, err := json.Marshal(map[string]interface{}{
+		"voter":      vote.VoterID,
+		"target":     vote.TargetNode,
+		"capability": vote.CapabilityType,
+		"level":      vote.Level,
+		"timestamp":  vote.Timestamp.Unix(),
+		"expiration": vote.Expiration.Unix(),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to serialize vote data: %w", err)
+	}
+
+	// Verify the signature
+	if !ed25519.Verify(vote.VoterKey, voteData, vote.Signature) {
+		return errors.New("invalid vote signature")
+	}
+
+	// Verify voter has the required capability
+	req, ok := cm.capabilityRequirements[vote.CapabilityType]
+	if !ok {
+		return fmt.Errorf("unknown capability type: %s", vote.CapabilityType)
+	}
+
+	hasReq, level := cm.HasCapability(vote.VoterID, req.RequiredCapability)
+	if !hasReq {
+		return fmt.Errorf("voter does not have required capability: %s", req.RequiredCapability)
+	}
+
+	if level < req.MinVoterCapability {
+		return fmt.Errorf("voter capability level (%d) below minimum (%d)",
+			level, req.MinVoterCapability)
+	}
+
+	return nil
+}
+
+// AddVote adds a verified vote from the network
+func (cm *CapabilityManager) AddVote(vote *CapabilityVote) error {
+	// Verify the vote first
+	if err := cm.VerifyVote(vote); err != nil {
+		return fmt.Errorf("vote verification failed: %w", err)
+	}
+
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	votes, ok := cm.votes[vote.TargetNode]
+	if !ok {
+		votes = make([]*CapabilityVote, 0)
+	}
+
+	// Check for duplicate votes
+	for i, v := range votes {
+		if v.VoterID == vote.VoterID && v.CapabilityType == vote.CapabilityType {
+			// Replace the existing vote if this one is newer
+			if vote.Timestamp.After(v.Timestamp) {
+				votes[i] = vote
+				cm.votes[vote.TargetNode] = votes
+
+				// Notify handlers
+				for _, handler := range cm.voteHandlers {
+					go handler(vote)
+				}
+
+				// Check if we have enough votes to grant the capability
+				cm.checkVotesForCapability(vote.TargetNode, vote.CapabilityType)
+			}
+			return nil
+		}
+	}
+
+	// Add new vote
+	votes = append(votes, vote)
+	cm.votes[vote.TargetNode] = votes
+
+	// Notify handlers
+	for _, handler := range cm.voteHandlers {
+		go handler(vote)
+	}
+
+	// Check if we have enough votes to grant the capability
+	cm.checkVotesForCapability(vote.TargetNode, vote.CapabilityType)
+
+	return nil
 }

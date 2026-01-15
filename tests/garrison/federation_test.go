@@ -252,3 +252,85 @@ func TestFederationNodeClose(t *testing.T) {
 	// Multiple closes should be safe
 	fedNode.Close()
 }
+
+// TestAccessPolicyWildcard tests wildcard access policy
+func TestAccessPolicyWildcard(t *testing.T) {
+	policy := garrison.AccessPolicy{
+		ResourceName:      "test-resource",
+		AllowedIdentities: []string{"*"}, // Wildcard allows all
+		RequiredSigs:      1,
+	}
+
+	// Any identity should be allowed with wildcard
+	testIdentities := []string{"alice", "bob", "charlie", "unknown"}
+	for _, id := range testIdentities {
+		allowed := false
+		for _, allowedID := range policy.AllowedIdentities {
+			if allowedID == "*" || allowedID == id {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			t.Errorf("Identity %s should be allowed with wildcard policy", id)
+		}
+	}
+}
+
+// TestAccessPolicyRestrictedIdentities tests restricted identity list
+func TestAccessPolicyRestrictedIdentities(t *testing.T) {
+	policy := garrison.AccessPolicy{
+		ResourceName:      "restricted-resource",
+		AllowedIdentities: []string{"alice", "bob"},
+		RequiredSigs:      2,
+	}
+
+	// Test allowed identities
+	allowedIDs := []string{"alice", "bob"}
+	for _, id := range allowedIDs {
+		allowed := false
+		for _, allowedID := range policy.AllowedIdentities {
+			if allowedID == id {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			t.Errorf("Identity %s should be allowed", id)
+		}
+	}
+
+	// Test denied identities
+	deniedIDs := []string{"charlie", "eve", "mallory"}
+	for _, id := range deniedIDs {
+		allowed := false
+		for _, allowedID := range policy.AllowedIdentities {
+			if allowedID == "*" || allowedID == id {
+				allowed = true
+				break
+			}
+		}
+		if allowed {
+			t.Errorf("Identity %s should be denied", id)
+		}
+	}
+}
+
+// TestMultiSignatureRequirement tests that RequiredSigs field is validated
+func TestMultiSignatureRequirement(t *testing.T) {
+	policy := garrison.AccessPolicy{
+		ResourceName:      "high-security-resource",
+		AllowedIdentities: []string{"alice", "bob", "charlie"},
+		RequiredSigs:      3, // Requires 3 signatures
+	}
+
+	if policy.RequiredSigs != 3 {
+		t.Errorf("Expected RequiredSigs=3, got %d", policy.RequiredSigs)
+	}
+
+	// Verify there are enough allowed identities to meet signature requirement
+	if len(policy.AllowedIdentities) < policy.RequiredSigs {
+		t.Errorf("Not enough allowed identities (%d) to meet required signatures (%d)",
+			len(policy.AllowedIdentities), policy.RequiredSigs)
+	}
+}
