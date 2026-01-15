@@ -106,10 +106,12 @@ func (ds *DiscoveryService) Start() error {
 		return fmt.Errorf("failed to bootstrap DHT: %w", err)
 	}
 
-	// Setup mDNS discovery
+	// Setup mDNS discovery (optional, failure is non-fatal)
 	mdnsService := mdns.NewMdnsService(ds.Host, ds.discoveryTag, ds)
 	if err := mdnsService.Start(); err != nil {
-		return fmt.Errorf("failed to start mDNS discovery: %w", err)
+		// mDNS may not be available in all environments (e.g., containers, sandboxes)
+		// Log the warning but continue - DHT and bootstrap peers can still work
+		fmt.Printf("Warning: mDNS discovery not available: %v\n", err)
 	}
 
 	// Start periodic peer discovery
